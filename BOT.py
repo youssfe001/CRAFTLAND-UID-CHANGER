@@ -14,7 +14,7 @@ from telegram.ext import (
 )
 
 # ================== CONFIG ==================
-TOKEN = os.getenv("8598449447:AAFNxfO2ZUdk2Ht_rFoHJeVpDWkuZiJILyU")  # ضع التوكن في Environment Variable
+TOKEN = os.getenv("")  # ضع التوكن في Environment Variable
 BANNER_IMAGE = "BACKGROUND05.png"  # صورة الواجهة
 
 # ================== VARINT ==================
