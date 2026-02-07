@@ -3,6 +3,7 @@
 A lightweight, single-page web app for inspecting and editing Craftland UID values inside `.bytes` files. Everything runs locally in your browser—no uploads, no server required.
 
 **Website name:** Craftland UID Hex Editor
+**Website URL:** https://auronchanger.github.io/
 
 ## Features
 
