@@ -1,3 +1,4 @@
+import os
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -12,10 +13,12 @@ from telegram.ext import (
     filters
 )
 
-BANNER_PATH = "BACKGROUND05.png"  # نفس الصورة اللي أرسلتها
+# ================== CONFIG ==================
+TOKEN = os.getenv("8598449447:AAFNxfO2ZUdk2Ht_rFoHJeVpDWkuZiJILyU")  # ضع التوكن في Environment Variable
+BANNER_IMAGE = "BACKGROUND05.png"  # صورة الواجهة
 
-# ---------- VARINT ----------
-def decode_varint(data, start):
+# ================== VARINT ==================
+def decode_varint(data: bytes, start: int):
     value = 0
     shift = 0
     pos = start
@@ -28,7 +31,8 @@ def decode_varint(data, start):
         pos += 1
     return value, pos - start + 1
 
-def encode_varint(num):
+
+def encode_varint(num: int) -> bytes:
     out = []
     while num > 0x7F:
         out.append((num & 0x7F) | 0x80)
@@ -36,20 +40,28 @@ def encode_varint(num):
     out.append(num)
     return bytes(out)
 
-def find_uid(data):
+
+# ================== UID FINDER ==================
+def find_uid(data: bytes):
     for i in range(len(data) - 6):
-        if data[i] == 0x38:
-            try:
-                val, ln = decode_varint(data, i + 1)
-                end = i + 1 + ln
-                if data[end] == 0x42 and ln >= 3 and val > 100000:
-                    return i + 1, ln, val
-            except:
-                pass
+        if data[i] != 0x38:
+            continue
+        try:
+            value, length = decode_varint(data, i + 1)
+            end = i + 1 + length
+            if (
+                data[end] == 0x42
+                and length >= 3
+                and value > 100000
+            ):
+                return i + 1, length, value
+        except:
+            pass
     return None
 
-# ---------- UI ----------
-def main_keyboard():
+
+# ================== UI ==================
+def keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Detect UID", callback_data="detect")],
         [
@@ -58,26 +70,27 @@ def main_keyboard():
         ]
     ])
 
-# ---------- HANDLERS ----------
+
+# ================== HANDLERS ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    with open(BANNER_PATH, "rb") as img:
+    with open(BANNER_IMAGE, "rb") as img:
         await update.message.reply_photo(
             photo=img,
             caption=(
-                "🎮 **Craftland UID Editor**\n\n"
+                "🎮 **Craftland UID Editor Bot**\n\n"
                 "• أرسل ملف `.bytes`\n"
                 "• سيتم استخراج UID تلقائيًا\n"
-                "• عدّله بضغطة زر\n\n"
-                "⬇️ اختر عملية:"
+                "• عدّل UID أو امسحه بسهولة\n"
             ),
             parse_mode="Markdown",
-            reply_markup=main_keyboard()
+            reply_markup=keyboard()
         )
+
 
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
-    file = await doc.get_file()
-    data = await file.download_as_bytearray()
+    tg_file = await doc.get_file()
+    data = await tg_file.download_as_bytearray()
 
     uid = find_uid(data)
     if not uid:
@@ -87,52 +100,66 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["file"] = data
     context.user_data["uid"] = uid
 
+    start_offset, length, value = uid
+
     await update.message.reply_text(
         f"✅ **UID Detected**\n\n"
-        f"🔢 UID: `{uid[2]}`\n"
-        f"📍 Offset: `0x{uid[0]:X}`",
+        f"🔢 UID: `{value}`\n"
+        f"📍 Offset: `0x{start_offset:X}`\n"
+        f"📦 Length: `{length} bytes`",
         parse_mode="Markdown",
-        reply_markup=main_keyboard()
+        reply_markup=keyboard()
     )
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
 
-    if q.data == "clear":
+async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "update":
+        await query.message.reply_text("✏️ أرسل UID الجديد (أرقام فقط)")
+
+    elif query.data == "clear":
         await apply_uid(update, context, 0)
 
-    elif q.data == "update":
-        await q.message.reply_text("✏️ أرسل UID الجديد كرقم فقط")
 
-async def apply_uid(update, context, new_uid):
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.text.isdigit():
+        return
+    new_uid = int(update.message.text)
+    await apply_uid(update, context, new_uid)
+
+
+async def apply_uid(update, context, new_uid: int):
     if "file" not in context.user_data:
-        await update.callback_query.message.reply_text("❌ أرسل ملف أولًا")
+        await update.effective_message.reply_text("❌ أرسل ملف أولًا")
         return
 
     data = context.user_data["file"]
-    start, ln, _ = context.user_data["uid"]
+    start, length, _ = context.user_data["uid"]
 
     new_var = encode_varint(new_uid)
-    new_data = data[:start] + new_var + data[start+ln:]
+    new_data = data[:start] + new_var + data[start + length:]
 
-    await update.callback_query.message.reply_document(
+    await update.effective_message.reply_document(
         document=new_data,
         filename="Craftland_Modified.bytes",
         caption="✅ UID Updated Successfully"
     )
 
-async def text_uid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.text.isdigit():
-        return
-    await apply_uid(update, context, int(update.message.text))
 
-# ---------- RUN ----------
-app = ApplicationBuilder().token("PUT_YOUR_BOT_TOKEN").build()
+# ================== RUN ==================
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.Document.ALL, file_handler))
-app.add_handler(CallbackQueryHandler(buttons))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_uid))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Document.ALL, file_handler))
+    app.add_handler(CallbackQueryHandler(buttons))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-app.run_polling()
+    print("🤖 Bot is running...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
